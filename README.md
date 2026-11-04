@@ -1,5 +1,9 @@
 # Midterm Pulse
 
+[![Deploy to GitHub Pages](https://github.com/michaelheavener4/midterm-pulse/actions/workflows/deploy.yml/badge.svg)](https://github.com/michaelheavener4/midterm-pulse/actions/workflows/deploy.yml)
+
+[**Open the live site →**](https://michaelheavener4.github.io/midterm-pulse/)
+
 A live, nonpartisan dashboard for the 2026 US midterms. It tracks Senate, House and governor races from official state election feeds, compares the two-party margin with the 2024 certified results, and follows local ballot issues down to cities and counties.
 
 ![Midterm Pulse overview](docs/overview.png)
@@ -32,7 +36,7 @@ npm run build
 npm run preview
 ```
 
-The app is a static Vite site. It needs no API keys and has no backend.
+The app is a static Vite site. It needs no API keys and has no backend. Pushes to `main` deploy automatically to GitHub Pages.
 
 ## Data
 

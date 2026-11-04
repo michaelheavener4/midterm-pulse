@@ -31,6 +31,7 @@ import {
 } from './data.js';
 import { icon } from './icons.js';
 import statePaths from './us-map.json';
+import countyPaths from './county-map.json';
 import localData from './local-issues.json';
 
 const app = document.querySelector('#app');
@@ -40,6 +41,109 @@ const LOCAL_SUBJECTS = [...new Set(LOCAL_ITEMS.map((item) => item.subject).filte
   .slice(0, 24);
 const LOCAL_STATES = [...new Set(LOCAL_ITEMS.map((item) => item.state))]
   .sort((a, b) => (STATE_NAMES[a] || a).localeCompare(STATE_NAMES[b] || b));
+
+function normalizeCountyName(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[.'’]/g, '')
+    .replace(/\b(city and borough|census area|municipality|county|parish|borough|city)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildCountyIndex() {
+  const byFips = new Map();
+  const byName = new Map();
+  for (const [fips, geometry] of Object.entries(countyPaths)) {
+    const record = { fips, ...geometry, items: [] };
+    byFips.set(fips, record);
+    byName.set(`${geometry.s}|${normalizeCountyName(geometry.n)}`, record);
+  }
+  for (const item of LOCAL_ITEMS) {
+    if (!item.county) continue;
+    const record = byName.get(`${item.state}|${normalizeCountyName(item.county)}`);
+    if (record) record.items.push(item);
+  }
+  return { byFips, byName, withMeasures: [...byFips.values()].filter((record) => record.items.length) };
+}
+
+const COUNTY_INDEX = buildCountyIndex();
+
+function countyDisplayName(record) {
+  return record.items[0]?.county || record.n;
+}
+
+function countySummary(items = []) {
+  const approved = items.filter((item) => item.result === 'approved').length;
+  const rejected = items.filter((item) => item.result === 'rejected').length;
+  const withVotes = items.filter((item) => item.totalVotes > 0).length;
+  const waiting = items.length - withVotes;
+  let tone = 'none';
+  let label = 'No indexed measure';
+  if (items.length) {
+    if (approved && rejected) {
+      tone = 'mixed';
+      label = 'Mixed results';
+    } else if (approved) {
+      tone = 'approved';
+      label = 'Approved';
+    } else if (rejected) {
+      tone = 'rejected';
+      label = 'Rejected';
+    } else if (withVotes) {
+      tone = 'counting';
+      label = 'Counting';
+    } else {
+      tone = 'waiting';
+      label = 'Awaiting count';
+    }
+  }
+  return { approved, rejected, withVotes, waiting, tone, label, total: items.length };
+}
+
+function countyStatusClass(summary) {
+  if (summary.tone === 'approved') return 'approved';
+  if (summary.tone === 'rejected') return 'rejected';
+  if (summary.tone === 'counting') return 'counted';
+  return 'waiting';
+}
+
+function stateViewBox(state) {
+  const box = statePaths[state]?.bbox;
+  if (!box) return '0 0 976 610';
+  const [x0, y0, x1, y1] = box;
+  const pad = 14;
+  return `${(x0 - pad).toFixed(1)} ${(y0 - pad).toFixed(1)} ${(x1 - x0 + pad * 2).toFixed(1)} ${(y1 - y0 + pad * 2).toFixed(1)}`;
+}
+
+function countyMap(state = 'all', { mini = false } = {}) {
+  const national = state === 'all';
+  const records = national
+    ? COUNTY_INDEX.withMeasures
+    : [...COUNTY_INDEX.byFips.values()].filter((record) => record.s === state);
+  if (!records.length) return emptyState('No counties to map here.', 'Try another state.');
+  const withMeasures = records.filter((record) => record.items.length).length;
+  const outlines = national
+    ? Object.values(statePaths).map((geometry) => `<path class="county-state-outline" d="${geometry.d}"></path>`).join('')
+    : `<path class="county-state-outline" d="${statePaths[state]?.d || ''}"></path>`;
+  const paths = records.map((record) => {
+    const summary = countySummary(record.items);
+    const name = countyDisplayName(record);
+    const stateName = STATE_NAMES[record.s] || record.s;
+    const title = `${name}, ${stateName}: ${summary.total ? `${summary.total} local measure${summary.total === 1 ? '' : 's'}, ${summary.label.toLowerCase()}` : 'no indexed local measures'}`;
+    return `<path class="county-path ${summary.tone}" d="${record.d}" data-action="open-county" data-state="${record.s}" data-fips="${record.fips}" role="button" tabindex="0" aria-label="${esc(title)}"><title>${esc(title)}</title></path>`;
+  }).join('');
+  return `<div class="county-map-wrap${mini ? ' mini' : ''}">
+    <svg class="county-map" viewBox="${national ? '0 0 976 610' : stateViewBox(state)}" role="img" aria-label="${national ? 'Counties with local ballot measures' : `${esc(STATE_NAMES[state] || state)} counties`}">
+      <g class="county-outlines">${outlines}</g>
+      <g class="county-fills">${paths}</g>
+    </svg>
+    <div class="county-map-caption">
+      <span>${national ? `${records.length} counties with measures` : `${records.length} counties · ${withMeasures} with measures`}</span>
+      <span>${national ? 'Choose a state to see every county' : 'Click a county for its measures'}</span>
+    </div>
+  </div>`;
+}
 
 const NAV = [
   { id: 'overview', label: 'Overview', icon: 'spark' },
@@ -792,6 +896,29 @@ function localPage() {
     <span>${stats.withVotes} reporting counts · ${stats.approved} approved · ${stats.rejected} rejected</span>
   </div>
 
+  <section class="card county-map-card">
+    <div class="card-head">
+      <div>
+        <span class="eyebrow">County map</span>
+        <h2>Local measures by county</h2>
+      </div>
+      <label class="county-map-picker" for="county-map-state"><span>Map state</span>
+        <select id="county-map-state" aria-label="Choose county map state">
+          <option value="all"${store.local.state === 'all' ? ' selected' : ''}>All states</option>
+          ${LOCAL_STATES.map((state) => `<option value="${state}"${store.local.state === state ? ' selected' : ''}>${esc(STATE_NAMES[state] || state)}</option>`).join('')}
+        </select>
+      </label>
+    </div>
+    ${countyMap(store.local.state)}
+    <div class="county-map-legend">
+      <span><i class="county-swatch approved"></i>Approved</span>
+      <span><i class="county-swatch counting"></i>Counting</span>
+      <span><i class="county-swatch waiting"></i>Awaiting count</span>
+      ${store.local.state === 'all' ? '' : `<span><i class="county-swatch none"></i>No indexed measure</span>`}
+    </div>
+    <p class="county-map-note">${icon('info', 14)} County shading shows local ballot measures. The live federal feeds publish statewide and district totals only, not county-level federal results.</p>
+  </section>
+
   <section class="card local-table-card">
     <div class="filter-bar local-filters">
       <label class="search-field" for="local-search">${icon('search', 17)}<input id="local-search" type="search" autocomplete="off" placeholder="Search city, county or measure" value="${esc(store.local.query)}"></label>
@@ -1059,9 +1186,10 @@ function drawerTemplate() {
   if (type === 'race') content = raceDrawer(store.drawer.office, store.drawer.key);
   else if (type === 'local') content = localDrawer(store.drawer.id);
   else if (type === 'state') content = stateDrawer(store.drawer.state);
+  else if (type === 'county') content = countyDrawer(store.drawer.state, store.drawer.fips);
   if (!content) return '';
   return `<div class="scrim" data-action="close-drawer" aria-hidden="true"></div>
-    <aside class="drawer" role="dialog" aria-modal="true" aria-label="${type === 'local' ? 'Local ballot measure details' : type === 'state' ? 'State results' : 'Race details'}">
+    <aside class="drawer" role="dialog" aria-modal="true" aria-label="${type === 'local' ? 'Local ballot measure details' : type === 'state' ? 'State results' : type === 'county' ? 'County local measures' : 'Race details'}">
       <button class="drawer-close" data-action="close-drawer" aria-label="Close">${icon('close', 20)}</button>
       ${content}
     </aside>`;
@@ -1159,15 +1287,48 @@ function localDrawer(id) {
   </div>`;
 }
 
+function countyDrawer(state, fips) {
+  const record = COUNTY_INDEX.byFips.get(fips);
+  if (!record) return `<div class="drawer-inner">${emptyState('County not found.', 'Try another county on the map.')}</div>`;
+  const items = record.items;
+  const summary = countySummary(items);
+  const stateName = STATE_NAMES[state] || state;
+  return `<div class="drawer-inner">
+    <div class="drawer-eyebrow"><span class="office-kicker">County · ${esc(stateName)}</span><span class="status-pill ${countyStatusClass(summary)}">${esc(summary.label)}</span></div>
+    <h2>${esc(countyDisplayName(record))}</h2>
+    <div class="drawer-actions">
+      <button class="button quiet small" data-action="open-state" data-state="${state}">${icon('map', 16)} State overview</button>
+      <button class="button quiet small" data-action="filter-state-local" data-state="${state}">${icon('list', 16)} State local list</button>
+    </div>
+    <p class="drawer-intro">${summary.total ? `${formatNumber(summary.total)} local ballot measure${summary.total === 1 ? '' : 's'} indexed in this county, with ${formatNumber(summary.withVotes)} reporting a count.` : 'No local ballot measures are indexed for this county.'}</p>
+    <div class="drawer-section">
+      <div class="section-label"><span>County snapshot</span><span>${esc(summary.label)}</span></div>
+      <div class="measure-meta">
+        <div><span>Measures</span><strong>${formatNumber(summary.total)}</strong></div>
+        <div><span>Reporting</span><strong>${formatNumber(summary.withVotes)}</strong></div>
+        <div><span>Approved</span><strong>${formatNumber(summary.approved)}</strong></div>
+        <div><span>Awaiting</span><strong>${formatNumber(summary.waiting)}</strong></div>
+      </div>
+    </div>
+    ${items.length ? `<div class="drawer-section"><div class="section-label"><span>Local measures</span><span>${formatNumber(items.length)}</span></div><div class="state-local-list">${items.map((item) => `<button class="state-local" data-action="open-local" data-id="${item.id}"><span>${esc(item.jurisdiction)}</span><strong>${esc(item.title)}</strong><span class="status-pill ${yesNoClass(item)}">${esc(localStatus(item))}</span></button>`).join('')}</div></div>` : '<div class="empty-inline">No local measures are indexed for this county yet.</div>'}
+  </div>`;
+}
+
 function stateDrawer(state) {
   const name = STATE_NAMES[state] || state;
   const races = currentRaces().filter((race) => race.state === state);
   const localItems = LOCAL_ITEMS.filter((item) => item.state === state);
+  const countyCount = [...COUNTY_INDEX.byFips.values()].filter((record) => record.s === state && record.items.length).length;
   if (!races.length && !localItems.length) return `<div class="drawer-inner">${emptyState(`${name} is not in the available feeds yet.`, 'This state may publish through a different official feed.')}</div>`;
   return `<div class="drawer-inner">
     <div class="drawer-eyebrow"><span class="office-kicker">State snapshot</span><span class="status-pill counted">${races.length} races</span></div>
     <h2>${esc(name)}</h2>
     <p class="drawer-intro">${localItems.length ? `${formatNumber(localItems.length)} local measures are also on the ballot in this state.` : 'No local measures indexed for this state yet.'}</p>
+    ${localItems.length ? `<div class="drawer-section county-drawer-section">
+      <div class="section-label"><span>County map</span><span>${formatNumber(countyCount)} with measures</span></div>
+      ${countyMap(state, { mini: true })}
+      <button class="text-link" data-action="filter-state-local" data-state="${state}">Open full county map ${icon('chevronRight', 14)}</button>
+    </div>` : ''}
     <div class="drawer-section">
       <div class="section-label"><span>Federal & state races</span><span>Live counts</span></div>
       <div class="state-race-list">${races.map((race) => `<button class="state-race" data-action="open-race" data-office="${race.office}" data-key="${esc(race.key)}"><span><span class="office-kicker">${esc(OFFICES[race.office].lower)}</span><strong>${esc(race.label)}</strong></span><span>${leaderLine(race)}</span><strong class="${race.leaderParty === 'D' ? 'dem' : race.leaderParty === 'R' ? 'rep' : ''}">${formatMargin(race)}</strong></button>`).join('') || '<div class="empty-inline">No race in the current feed.</div>'}</div>
@@ -1371,6 +1532,11 @@ function handleClick(event) {
     render();
     return;
   }
+  if (action === 'open-county') {
+    store.drawer = { type: 'county', state: target.dataset.state, fips: target.dataset.fips };
+    render();
+    return;
+  }
   if (action === 'close-drawer') {
     store.drawer = null;
     render();
@@ -1475,13 +1641,14 @@ function handleChange(event) {
   else if (id === 'office-status') store.office.status = event.target.value;
   else if (id === 'office-sort') store.office.sort = event.target.value;
   else if (id === 'local-state') store.local.state = event.target.value;
+  else if (id === 'county-map-state') store.local.state = event.target.value;
   else if (id === 'local-level') store.local.level = event.target.value;
   else if (id === 'local-subject') store.local.subject = event.target.value;
   else if (id === 'local-result') store.local.result = event.target.value;
   else if (id === 'local-sort') store.local.sort = event.target.value;
   else return;
   if (id.startsWith('office-')) store.office.limit = 96;
-  if (id.startsWith('local-')) store.local.limit = 96;
+  if (id.startsWith('local-') || id === 'county-map-state') store.local.limit = 96;
   render();
 }
 

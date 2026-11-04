@@ -1073,6 +1073,162 @@ svg {
   background: var(--other);
 }
 
+.county-map-card {
+  margin-bottom: 14px;
+  padding-bottom: 13px;
+}
+
+.county-map-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.county-map-picker select {
+  min-width: 132px;
+}
+
+.county-map-wrap {
+  padding: 8px 18px 0;
+}
+
+.county-map {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.county-map-wrap.mini {
+  padding: 4px 0 0;
+}
+
+.county-map-wrap.mini .county-map {
+  max-height: 380px;
+}
+
+.county-state-outline {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 0.9;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.county-path {
+  cursor: pointer;
+  fill: var(--map-nofeed);
+  stroke: var(--surface-solid);
+  stroke-width: 0.55;
+  vector-effect: non-scaling-stroke;
+  transition: fill 0.18s var(--ease), stroke 0.18s var(--ease), filter 0.18s var(--ease);
+}
+
+.county-path.approved {
+  fill: color-mix(in srgb, var(--green) 72%, var(--surface-solid));
+}
+
+.county-path.rejected {
+  fill: color-mix(in srgb, var(--rep) 72%, var(--surface-solid));
+}
+
+.county-path.counting {
+  fill: color-mix(in srgb, var(--dem) 66%, var(--surface-solid));
+}
+
+.county-path.waiting {
+  fill: color-mix(in srgb, var(--amber) 52%, var(--surface-solid));
+}
+
+.county-path.mixed {
+  fill: color-mix(in srgb, var(--green) 48%, var(--rep));
+}
+
+.county-path.none {
+  fill: var(--map-nofeed);
+}
+
+.county-path:hover,
+.county-path:focus-visible {
+  stroke: var(--text);
+  stroke-width: 1.5;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.24));
+  outline: none;
+}
+
+.county-map-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 7px 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.county-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px 16px;
+  padding: 11px 24px 0;
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.county-map-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.county-swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+
+.county-swatch.approved {
+  background: var(--green);
+}
+
+.county-swatch.rejected {
+  background: var(--rep);
+}
+
+.county-swatch.counting {
+  background: var(--dem);
+}
+
+.county-swatch.waiting {
+  background: var(--amber);
+}
+
+.county-swatch.none {
+  background: var(--map-nofeed);
+  border: 1px solid var(--line);
+}
+
+.county-map-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 11px 24px 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.county-map-note .icon {
+  flex: none;
+  margin-top: 1px;
+}
+
+.county-drawer-section .text-link {
+  margin-top: 9px;
+}
+
 .live-desk {
   display: flex;
   flex-direction: column;
@@ -3753,6 +3909,40 @@ svg {
 
   .toast {
     bottom: 90px;
+  }
+
+  .county-map-card .card-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .county-map-picker {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .county-map-picker select {
+    flex: 1;
+  }
+
+  .county-map-wrap {
+    padding: 4px 10px 0;
+  }
+
+  .county-map-caption {
+    display: block;
+    line-height: 1.5;
+  }
+
+  .county-map-caption span {
+    display: block;
+  }
+
+  .county-map-legend,
+  .county-map-note {
+    padding-inline: 10px;
+    margin-inline: 0;
   }
 }
 

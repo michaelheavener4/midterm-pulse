@@ -13,7 +13,8 @@ A live, nonpartisan dashboard for the 2026 US midterms. It tracks Senate, House 
 - **Live federal and statewide races** — Senate, House and governor results merge multiple official state feeds and refresh every 60 seconds.
 - **2024 comparison** — a scatter plot, ranked swing table and per-race comparison show how the two-party margin has moved since the last certified election.
 - **Local ballot issues** — 871 measures across 22 states, 200 counties and 276 cities, with city, county, school district and township filters.
-- **Interactive US map** — click any state to open its races and local measures.
+- **County drill-down map** — state and local views shade counties by local measure status. Click any state to see its county map, or open the county map on the Local issues page to browse every county in a state.
+- **Interactive US map** — click any state to open its races, county map and local measures.
 - **Watchlist** — bookmark races and local measures; saved locally in your browser.
 - **Closest races and a live desk** — lead changes and new reporting milestones as they land.
 - **Light and dark appearance** — follows the system theme, with a manual toggle.
@@ -57,6 +58,7 @@ This fetches Ballotpedia state pages and regenerates `src/local-issues.json`. Th
 
 - Midterm Pulse does not project winners or call races. It displays raw counts and leads reported by the source feeds.
 - Coverage mirrors the available machine-readable state feeds. Some states do not publish a live feed, and some supplemental feeds update slowly or omit contests, so not every seat will appear at every moment.
+- County shading covers local ballot measures, not federal races. The live federal feeds publish statewide and district totals only, without county-level federal vote breakdowns.
 - Local counts are unofficial until the relevant city or county canvass and certification.
 - The 2026 House map includes redistricted states. House comparisons against 2024 are labeled accordingly and should be read as directional.
 - Ballotpedia's local coverage is not an exhaustive list of every local measure in the country. It focuses on the 100 largest cities, state capitals, all of California and Virginia, and selected issues such as data centers and electoral systems.

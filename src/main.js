@@ -3,7 +3,11 @@ import {
   OFFICE_ORDER,
   STATE_NAMES,
   DATA_SOURCE,
+  PUSHBUILD_SOURCE,
   fetchFeed,
+  fetchPushbuild,
+  buildPushbuildFeeds,
+  mergeOfficeFeeds,
   allRaces,
   findPriorRace,
   compareRace,
@@ -65,6 +69,7 @@ const store = {
   priorReady: false,
   priorError: false,
   errors: {},
+  sourceReport: [],
   events: [],
   lastRefreshAt: null,
   nextRefreshAt: 0,
@@ -276,11 +281,11 @@ function summaryCard(office) {
     <div class="summary-tally">
       <div><strong class="dem">${summary.leads.D}</strong><span>D leading</span></div>
       <div><strong class="rep">${summary.leads.R}</strong><span>R leading</span></div>
-      <div><strong>${summary.called}</strong><span>called</span></div>
+      <div><strong>${summary.totals.withVotes}</strong><span>with votes</span></div>
     </div>
     ${partyBar(summary.leads.D, summary.leads.R, summary.leads.other, summary.leads.none, true)}
     <div class="summary-foot">
-      <span>${racesInFeed} of ${meta.totalSeats} in feed</span>
+      <span>${racesInFeed} of ${meta.totalSeats} tracked</span>
       <span>${reporting == null ? '—' : formatPct(reporting, 0)} avg reporting</span>
     </div>
   </a>`;
@@ -297,7 +302,7 @@ function renderFatal() {
   app.innerHTML = `<div class="boot boot-error">
     <div class="error-glyph">${icon('activity', 34)}</div>
     <h1>Feeds are taking a moment.</h1>
-    <p>The OpenAmerica results service did not answer. State election feeds can briefly rate-limit during heavy traffic.</p>
+    <p>The live results services did not answer. State election feeds can briefly rate-limit during heavy traffic.</p>
     <button class="button primary" data-action="retry">${icon('refresh', 17)} Try again</button>
     <a class="text-link" href="${DATA_SOURCE}" target="_blank" rel="noreferrer">View the data source ${icon('external', 14)}</a>
   </div>`;
@@ -349,9 +354,10 @@ function shell(content) {
       </div>
       <div class="footer-links">
         <a href="${DATA_SOURCE}" target="_blank" rel="noreferrer">OpenAmerica ${icon('external', 13)}</a>
+        <a href="${PUSHBUILD_SOURCE}" target="_blank" rel="noreferrer">Pushbuild ${icon('external', 13)}</a>
         <a href="https://ballotpedia.org/Local_ballot_measure_elections_in_2026" target="_blank" rel="noreferrer">Ballotpedia local measures ${icon('external', 13)}</a>
       </div>
-      <p class="footer-note">Local issue counts are unofficial until certified. Results refresh every 60 seconds.</p>
+      <p class="footer-note">Local issue counts are unofficial until certified. Federal feeds refresh every 60 seconds; source coverage varies by state.</p>
     </footer>
     <nav class="mobile-nav" aria-label="Mobile navigation">${mobileNav}</nav>
     ${drawerTemplate()}
@@ -430,7 +436,7 @@ function overviewPage() {
     <div class="hero-copy">
       <div class="eyebrow live-eyebrow"><span class="live-dot"></span> Election night · November 3, 2026</div>
       <h1>The country,<br><span>counted live.</span></h1>
-      <p>Senate, House and governor races — plus local ballot issues down to cities and counties. Raw counts from official sources, refreshed as they land.</p>
+      <p>Senate, House and governor races — plus local ballot issues down to cities and counties. Raw counts from multiple official state feeds, merged and refreshed as they land.</p>
       <div class="hero-actions">
         <a class="button primary" href="#/senate">${icon('layers', 17)} Explore the races</a>
         <a class="button quiet" href="#/compare">${icon('activity', 17)} Compare with 2024</a>
@@ -450,7 +456,7 @@ function overviewPage() {
       <div class="snapshot-rule"></div>
       <div class="snapshot-meta">
         <div><span>Votes counted</span><strong>${formatCompact(totalVotes)}</strong></div>
-        <div><span>States in feed</span><strong>${feedStates}</strong></div>
+        <div><span>States reporting</span><strong>${feedStates}</strong></div>
         <div><span>Local issues</span><strong>${formatNumber(local.total)}</strong></div>
       </div>
       <div class="snapshot-foot">
@@ -476,6 +482,14 @@ function overviewPage() {
       <div class="summary-foot"><span>${formatNumber(local.cities)} cities</span><span>${formatNumber(local.counties)} counties</span></div>
     </a>
   </section>
+
+  ${store.sourceReport.length ? `<section class="coverage-strip" aria-label="Live sources">
+    <span class="coverage-label">${icon('activity', 15)} Live source merge</span>
+    <div class="coverage-sources">
+      ${store.sourceReport.map((source) => `<a href="${esc(source.url || '#')}" target="_blank" rel="noreferrer"><strong>${esc(source.label)}</strong><span>${formatNumber(source.races)} race record${source.races === 1 ? '' : 's'} · ${source.states} state${source.states === 1 ? '' : 's'}</span></a>`).join('')}
+    </div>
+    <span class="coverage-note">Each race uses its most complete live count</span>
+  </section>` : ''}
 
   <div class="dashboard-grid">
     <section class="card map-card">
@@ -582,7 +596,7 @@ function usMap(office, interactive = false) {
     const name = STATE_NAMES[state] || state;
     const title = statesWithRaces.has(state)
       ? `${name}: ${status.counts.D} D, ${status.counts.R} R, ${status.counts.other} other leading`
-      : `${name}: no race in this feed`;
+      : `${name}: no race in the available feeds`;
     const click = interactive ? ` data-action="open-state" data-state="${state}" role="button" tabindex="0"` : '';
     return `<path class="state-path ${tone}" d="${geometry.d}"${click} aria-label="${esc(title)}"><title>${esc(title)}</title></path>`;
   }).join('');
@@ -602,7 +616,7 @@ function usMap(office, interactive = false) {
       <g>${paths}</g>
       <g class="map-labels" aria-hidden="true">${labels}</g>
     </svg>
-    <div class="map-caption"><span>${races.length} races in feed</span><span>${statesWithRaces.size} states reporting</span></div>
+    <div class="map-caption"><span>${races.length} races tracked</span><span>${statesWithRaces.size} states reporting</span></div>
   </div>`;
 }
 
@@ -662,7 +676,7 @@ function officePage(office) {
     <div class="head-stats">
       <div><strong class="dem">${summary.leads.D}</strong><span>D leading</span></div>
       <div><strong class="rep">${summary.leads.R}</strong><span>R leading</span></div>
-      <div><strong>${summary.called}</strong><span>called</span></div>
+      <div><strong>${summary.totals.withVotes}</strong><span>with votes</span></div>
       <div><strong>${formatCompact(summary.totals.totalVotes)}</strong><span>votes counted</span></div>
     </div>
   </section>
@@ -670,7 +684,7 @@ function officePage(office) {
   <section class="card office-map-card">
     <div class="card-head compact">
       <div><span class="eyebrow">Map</span><h2>${esc(meta.label)} by state</h2></div>
-      <span class="card-note">${races.length} races in feed${prior ? ` · 2024 baseline loaded` : ''}</span>
+      <span class="card-note">${races.length} races tracked${prior ? ` · 2024 baseline loaded` : ''}</span>
     </div>
     ${usMap(office, true)}
   </section>
@@ -687,8 +701,8 @@ function officePage(office) {
       <select id="office-status" aria-label="Filter by race status">
         <option value="all"${store.office.status === 'all' ? ' selected' : ''}>All races</option>
         <option value="close"${store.office.status === 'close' ? ' selected' : ''}>Within 5 pts</option>
-        <option value="called"${store.office.status === 'called' ? ' selected' : ''}>Called</option>
-        <option value="uncalled"${store.office.status === 'uncalled' ? ' selected' : ''}>Not called</option>
+        <option value="counted"${store.office.status === 'counted' ? ' selected' : ''}>Has votes</option>
+        <option value="waiting"${store.office.status === 'waiting' ? ' selected' : ''}>Awaiting votes</option>
         <option value="watched"${store.office.status === 'watched' ? ' selected' : ''}>Watchlist</option>
       </select>
       <select id="office-sort" aria-label="Sort races">
@@ -719,8 +733,8 @@ function filterRaces(races) {
     if (store.office.party === 'R' && race.leaderParty !== 'R') return false;
     if (store.office.party === 'O' && (race.leaderParty === 'D' || race.leaderParty === 'R')) return false;
     if (store.office.status === 'close' && !(race.margin != null && race.margin <= 5)) return false;
-    if (store.office.status === 'called' && !(race.called || race.winnerParty)) return false;
-    if (store.office.status === 'uncalled' && (race.called || race.winnerParty)) return false;
+    if (store.office.status === 'counted' && !race.hasVotes) return false;
+    if (store.office.status === 'waiting' && race.hasVotes) return false;
     if (store.office.status === 'watched' && !store.watch[raceKey(race)]) return false;
     return true;
   });
@@ -749,7 +763,7 @@ function raceRow(race, prior) {
     <div class="race-cell prior-cell">
       ${prior && compared ? `<strong class="${compared.before >= 0 ? 'dem' : 'rep'}">${marginLabel(compared.before)}</strong><span class="swing-chip ${compared.swing >= 0 ? 'dem' : 'rep'}">${formatPoints(compared.swing)}</span>` : '<span class="muted">—</span>'}
     </div>
-    <div class="race-cell votes-cell"><strong>${formatCompact(race.total)}</strong><span>${race.called || race.winnerParty ? 'called' : 'counted'}</span></div>
+    <div class="race-cell votes-cell"><strong>${formatCompact(race.total)}</strong><span>${race.hasVotes ? 'counted' : 'awaiting'}</span></div>
     <div class="race-cell action-cell"><button class="star-button ${watched ? 'active' : ''}" data-action="toggle-watch-race" data-office="${race.office}" data-key="${esc(race.key)}" aria-label="${watched ? 'Remove from' : 'Add to'} watchlist">${icon(watched ? 'bookmarkFilled' : 'bookmark', 17)}</button></div>
   </div>`;
 }
@@ -1098,7 +1112,15 @@ function raceDrawer(office, key) {
         ${compared.redistricted ? `<p class="caveat">${icon('info', 14)} This House district was redrawn for 2026. The 2024 comparison is directional, not a like-for-like electorate.</p>` : ''}`
         : `<p class="muted">${store.priorReady ? 'Both years need vote counts before a swing can be calculated.' : 'Fetching the 2024 certified results…'}</p>`}
     </div>
-    <div class="drawer-source"><span>Source: official state feed via OpenAmerica</span><a href="${DATA_SOURCE}" target="_blank" rel="noreferrer">Data source ${icon('external', 13)}</a></div>
+    <div class="drawer-source source-ledger">
+      <div class="source-ledger-head"><span>Sources</span><span>${race.sources?.length || 0} live check${(race.sources?.length || 0) === 1 ? '' : 's'}</span></div>
+      <div class="source-ledger-list">
+        ${(race.sources || []).map((source) => `<div class="source-ledger-row">
+          <span class="source-ledger-name">${source.url ? `<a href="${esc(source.url)}" target="_blank" rel="noreferrer">${esc(source.label)} ${icon('external', 12)}</a>` : esc(source.label)}<small>${esc(source.name || '')}</small></span>
+          <span class="source-ledger-value">${formatNumber(source.total)} votes${source.reporting == null ? '' : ` · ${formatPct(source.reporting, 1)} in`}${source.updatedAt ? ` · ${relativeTime(source.updatedAt)}` : ''}</span>
+        </div>`).join('')}
+      </div>
+    </div>
   </div>`;
 }
 
@@ -1141,7 +1163,7 @@ function stateDrawer(state) {
   const name = STATE_NAMES[state] || state;
   const races = currentRaces().filter((race) => race.state === state);
   const localItems = LOCAL_ITEMS.filter((item) => item.state === state);
-  if (!races.length && !localItems.length) return `<div class="drawer-inner">${emptyState(`${name} is not in the feed yet.`, 'This state may publish through a different office feed.')}</div>`;
+  if (!races.length && !localItems.length) return `<div class="drawer-inner">${emptyState(`${name} is not in the available feeds yet.`, 'This state may publish through a different official feed.')}</div>`;
   return `<div class="drawer-inner">
     <div class="drawer-eyebrow"><span class="office-kicker">State snapshot</span><span class="status-pill counted">${races.length} races</span></div>
     <h2>${esc(name)}</h2>
@@ -1154,24 +1176,35 @@ function stateDrawer(state) {
   </div>`;
 }
 
-async function loadLive({ initial = false } = {}) {
+async function loadLive({ initial = false, force = false } = {}) {
   if (store.refreshing) return store.ready;
   store.refreshing = true;
   if (!initial) render();
-  const results = await Promise.allSettled(OFFICE_ORDER.map((office) => fetchFeed(2026, office)));
   const previous = store.feeds[2026] || {};
+  const openPromise = Promise.allSettled(OFFICE_ORDER.map((office) => fetchFeed(2026, office)));
+  const pushPromise = fetchPushbuild({ force })
+    .then((bundle) => buildPushbuildFeeds(bundle, 2026))
+    .catch((error) => ({ error }));
+  const [results, push] = await Promise.all([openPromise, pushPromise]);
   const next = { ...previous };
   const errors = {};
   results.forEach((result, index) => {
     const office = OFFICE_ORDER[index];
-    if (result.status === 'fulfilled') next[office] = result.value;
+    const sources = [];
+    if (result.status === 'fulfilled') sources.push(result.value);
+    if (push?.[office]) sources.push(push[office]);
+    if (previous[office]) sources.push(previous[office]);
+    if (sources.length) next[office] = mergeOfficeFeeds(office, 2026, sources);
     else errors[office] = result.reason?.message || 'Feed unavailable';
   });
+  if (push?.error) errors.pushbuild = push.error.message || 'Supplemental feed unavailable';
+  else if ((push?.coverage?.states || 0) === 0) errors.pushbuild = 'Supplemental feed unavailable';
   const any = Object.keys(next).length > 0;
   if (any) {
     if (initial || !store.ready) seedEvents(next);
     else detectEvents(previous, next);
     store.feeds[2026] = next;
+    store.sourceReport = sourceReport(next);
     store.ready = true;
   }
   store.errors = errors;
@@ -1180,6 +1213,26 @@ async function loadLive({ initial = false } = {}) {
   store.nextRefreshAt = Date.now() + 60_000;
   if (!initial) render();
   return any;
+}
+
+function sourceReport(feeds) {
+  const sources = new Map();
+  for (const office of OFFICE_ORDER) {
+    for (const source of feeds[office]?.sources || []) {
+      const entry = sources.get(source.id) || {
+        id: source.id,
+        label: source.label,
+        name: source.name,
+        url: source.url,
+        races: 0,
+        states: 0,
+      };
+      entry.races += source.races;
+      entry.states = Math.max(entry.states, source.states || 0);
+      sources.set(source.id, entry);
+    }
+  }
+  return [...sources.values()];
 }
 
 async function loadPrior() {
@@ -1259,7 +1312,7 @@ function detectEvents(previous, next) {
 
 async function refreshNow() {
   if (store.refreshing) return;
-  await loadLive();
+  await loadLive({ force: true });
   const count = currentRaces().length;
   showToast(`Feeds refreshed · ${formatNumber(count)} races tracked`);
 }

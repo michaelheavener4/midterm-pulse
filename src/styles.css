@@ -1893,6 +1893,46 @@ svg {
   gap: 5px;
 }
 
+.coverage-label {
+  flex: none;
+  color: var(--text);
+  font-weight: 650;
+}
+
+.coverage-sources {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+}
+
+.coverage-sources a {
+  display: grid;
+  gap: 1px;
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+  color: var(--text);
+}
+
+.coverage-sources a:hover {
+  color: var(--dem);
+}
+
+.coverage-sources strong {
+  font-size: 10.5px;
+  font-weight: 650;
+}
+
+.coverage-sources span {
+  color: var(--muted);
+  font-size: 9.5px;
+}
+
+.coverage-note {
+  flex: none;
+  color: var(--muted);
+}
+
 .local-filters {
   padding: 14px;
 }
@@ -2762,6 +2802,55 @@ svg {
   font-weight: 580;
 }
 
+.source-ledger {
+  display: block;
+}
+
+.source-ledger-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.source-ledger-list {
+  display: grid;
+  gap: 7px;
+}
+
+.source-ledger-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+}
+
+.source-ledger-name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.source-ledger-name small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-ledger-value {
+  flex: none;
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .local-place-block {
   display: flex;
   align-items: center;
@@ -3587,6 +3676,16 @@ svg {
 
   .coverage-strip span {
     display: flex;
+  }
+
+  .coverage-sources {
+    display: grid;
+    gap: 10px;
+  }
+
+  .coverage-sources a {
+    padding-left: 0;
+    border-left: 0;
   }
 
   .shift-row {

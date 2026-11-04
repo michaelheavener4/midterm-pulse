@@ -944,9 +944,154 @@ svg {
   box-shadow: 0 1px 5px rgba(0, 0, 0, 0.08);
 }
 
+.map-card .segmented,
+.office-map-card .segmented {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .map-wrap {
   position: relative;
   padding: 6px 18px 0;
+}
+
+.map-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 5px 3px;
+}
+
+.map-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 580;
+}
+
+.map-breadcrumb > .icon {
+  flex: none;
+  opacity: 0.65;
+}
+
+.map-breadcrumb strong {
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-crumb {
+  flex: none;
+  color: var(--dem);
+  font-size: inherit;
+  font-weight: 620;
+}
+
+.map-crumb:hover {
+  text-decoration: underline;
+}
+
+.map-crumb-sep {
+  opacity: 0.45;
+}
+
+.map-mode-pill {
+  flex: none;
+  margin-left: 3px;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--dem) 26%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dem) 8%, transparent);
+  color: var(--dem);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.map-actions,
+.map-zoom {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.map-actions {
+  flex: none;
+  gap: 7px;
+}
+
+.map-action {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-solid);
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 620;
+  white-space: nowrap;
+}
+
+.map-action:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.map-zoom {
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.map-zoom button {
+  display: grid;
+  place-items: center;
+  min-width: 25px;
+  height: 23px;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.map-zoom button:hover {
+  background: var(--surface-solid);
+  color: var(--text);
+}
+
+.map-zoom .map-reset {
+  padding: 0 8px;
+  font-size: 9px;
+  font-weight: 620;
+}
+
+.map-viewport {
+  position: relative;
+}
+
+.interactive-map .us-map {
+  max-height: 620px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.interactive-map .us-map:active {
+  cursor: grabbing;
+}
+
+.map-zoomed .map-labels {
+  display: none;
 }
 
 .us-map {
@@ -986,6 +1131,30 @@ svg {
   fill: var(--map-nofeed);
 }
 
+.state-path.swing-d-strong {
+  fill: color-mix(in srgb, var(--dem) 86%, var(--surface-solid));
+}
+
+.state-path.swing-d {
+  fill: color-mix(in srgb, var(--dem) 54%, var(--surface-solid));
+}
+
+.state-path.swing-even {
+  fill: color-mix(in srgb, var(--map-none) 82%, var(--surface-solid));
+}
+
+.state-path.swing-r {
+  fill: color-mix(in srgb, var(--rep) 54%, var(--surface-solid));
+}
+
+.state-path.swing-r-strong {
+  fill: color-mix(in srgb, var(--rep) 86%, var(--surface-solid));
+}
+
+.state-path.no-compare {
+  fill: var(--map-nofeed);
+}
+
 .state-path:hover {
   opacity: 0.82;
   filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.18));
@@ -1019,6 +1188,22 @@ svg {
   padding: 0 7px;
   color: var(--muted);
   font-size: 10px;
+}
+
+.map-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 7px 7px 0;
+  color: var(--muted);
+  font-size: 9.5px;
+  line-height: 1.45;
+}
+
+.map-note .icon {
+  flex: none;
+  margin-top: 1px;
+  opacity: 0.65;
 }
 
 .map-legend {
@@ -1060,6 +1245,36 @@ svg {
 
 .legend-swatch.split {
   background: linear-gradient(135deg, var(--dem) 48%, var(--rep) 52%);
+}
+
+.legend-swatch.other {
+  background: var(--other);
+}
+
+.legend-swatch.nofeed,
+.legend-swatch.no-compare {
+  background: var(--map-nofeed);
+  border: 1px solid var(--line);
+}
+
+.legend-swatch.swing-d-strong {
+  background: color-mix(in srgb, var(--dem) 86%, var(--surface-solid));
+}
+
+.legend-swatch.swing-d {
+  background: color-mix(in srgb, var(--dem) 54%, var(--surface-solid));
+}
+
+.legend-swatch.swing-even {
+  background: color-mix(in srgb, var(--map-none) 82%, var(--surface-solid));
+}
+
+.legend-swatch.swing-r {
+  background: color-mix(in srgb, var(--rep) 54%, var(--surface-solid));
+}
+
+.legend-swatch.swing-r-strong {
+  background: color-mix(in srgb, var(--rep) 86%, var(--surface-solid));
 }
 
 .legend-dot {
@@ -3672,6 +3887,41 @@ svg {
 
   .map-wrap {
     padding-inline: 7px;
+  }
+
+  .map-toolbar {
+    flex-wrap: wrap;
+    gap: 7px;
+    padding: 4px 2px 2px;
+  }
+
+  .map-breadcrumb {
+    font-size: 9.5px;
+  }
+
+  .map-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .map-action {
+    height: 27px;
+    padding: 0 9px;
+    font-size: 9px;
+  }
+
+  .map-zoom button {
+    min-width: 29px;
+    height: 27px;
+  }
+
+  .interactive-map .us-map {
+    max-height: 460px;
+  }
+
+  .map-note {
+    margin-inline: 2px;
+    font-size: 9px;
   }
 
   .map-labels {

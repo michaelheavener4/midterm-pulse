@@ -108,12 +108,23 @@ function countyStatusClass(summary) {
   return 'waiting';
 }
 
-function stateViewBox(state) {
+const MAP_BOX = { x: 0, y: 0, w: 976, h: 610 };
+
+function stateBox(state) {
   const box = statePaths[state]?.bbox;
-  if (!box) return '0 0 976 610';
+  if (!box) return { ...MAP_BOX };
   const [x0, y0, x1, y1] = box;
   const pad = 14;
-  return `${(x0 - pad).toFixed(1)} ${(y0 - pad).toFixed(1)} ${(x1 - x0 + pad * 2).toFixed(1)} ${(y1 - y0 + pad * 2).toFixed(1)}`;
+  return { x: x0 - pad, y: y0 - pad, w: x1 - x0 + pad * 2, h: y1 - y0 + pad * 2 };
+}
+
+function stateViewBox(state) {
+  const box = stateBox(state);
+  return `${box.x.toFixed(1)} ${box.y.toFixed(1)} ${box.w.toFixed(1)} ${box.h.toFixed(1)}`;
+}
+
+function boxString(box) {
+  return `${box.x.toFixed(2)} ${box.y.toFixed(2)} ${box.w.toFixed(2)} ${box.h.toFixed(2)}`;
 }
 
 function countyMap(state = 'all', { mini = false } = {}) {
@@ -178,13 +189,19 @@ const store = {
   lastRefreshAt: null,
   nextRefreshAt: 0,
   theme: 'light',
-  mapOffice: 'all',
+  mapOffice: ROUTE_OFFICE[routeFromHash()] || 'all',
+  mapFocus: null,
+  mapView: null,
+  mapCompare: false,
   compareOffice: 'house',
   drawer: null,
   watch: loadWatchlist(),
   office: { query: '', party: 'all', status: 'all', sort: 'closest', limit: 96 },
   local: { state: 'all', level: 'all', subject: 'all', result: 'all', query: '', sort: 'votes', limit: 96 },
 };
+
+let suppressMapClick = false;
+let mapDrag = null;
 
 function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, (character) => ({
@@ -472,14 +489,14 @@ function shell(content) {
 }
 
 function pageTitle() {
-  if (store.route === 'overview') return '2026 live midterm results';
-  if (store.route === 'senate') return 'Live Senate results';
-  if (store.route === 'house') return 'Live House results';
-  if (store.route === 'governors') return 'Live governor results';
+  if (store.route === 'overview') return '2026 midterm results';
+  if (store.route === 'senate') return 'Senate results';
+  if (store.route === 'house') return 'House results';
+  if (store.route === 'governors') return 'Governor results';
   if (store.route === 'local') return 'Local ballot issues';
   if (store.route === 'compare') return '2026 vs 2024';
   if (store.route === 'watchlist') return 'Watchlist';
-  return '2026 live results';
+  return '2026 results';
 }
 
 function restoreFocus() {
@@ -538,9 +555,9 @@ function overviewPage() {
 
   return `<section class="hero">
     <div class="hero-copy">
-      <div class="eyebrow live-eyebrow"><span class="live-dot"></span> Election night · November 3, 2026</div>
-      <h1>The country,<br><span>counted live.</span></h1>
-      <p>Senate, House and governor races — plus local ballot issues down to cities and counties. Raw counts from multiple official state feeds, merged and refreshed as they land.</p>
+      <div class="eyebrow live-eyebrow"><span class="live-dot"></span> 2026 midterm results · November 2026</div>
+      <h1>The country,<br><span>counted.</span></h1>
+      <p>Senate, House and governor races, plus local ballot issues down to cities and counties. Raw counts from multiple official state feeds, merged and updated as the final counts settle.</p>
       <div class="hero-actions">
         <a class="button primary" href="#/senate">${icon('layers', 17)} Explore the races</a>
         <a class="button quiet" href="#/compare">${icon('activity', 17)} Compare with 2024</a>
@@ -549,7 +566,7 @@ function overviewPage() {
     </div>
     <aside class="hero-aside">
       <div class="snapshot-head">
-        <span class="live-chip live"><span class="live-dot"></span>Live desk</span>
+        <span class="live-chip live"><span class="live-dot"></span>Results desk</span>
         <span data-updated>${maxAsOf(store.feeds, 2026) ? `Updated ${relativeTime(maxAsOf(store.feeds, 2026))}` : 'Connecting…'}</span>
       </div>
       <div class="snapshot-tally">
@@ -600,25 +617,20 @@ function overviewPage() {
       <div class="card-head">
         <div>
           <span class="eyebrow">The map</span>
-          <h2>Where the night stands</h2>
+          <h2>${esc(mapTitle())}</h2>
         </div>
-        <div class="segmented" role="group" aria-label="Map office">
-          ${mapTabs(true)}
+        <div class="segmented" role="group" aria-label="Map mode and office">
+          ${mapTabs()}
         </div>
       </div>
       ${usMap(store.mapOffice, true)}
-      <div class="map-legend">
-        <span><i class="legend-swatch d"></i>D leading</span>
-        <span><i class="legend-swatch r"></i>R leading</span>
-        <span><i class="legend-swatch split"></i>Split</span>
-        <span><i class="legend-swatch none"></i>No count yet</span>
-      </div>
+      ${mapLegend()}
     </section>
 
     <section class="card live-desk">
       <div class="card-head">
         <div>
-          <span class="eyebrow">Live desk</span>
+          <span class="eyebrow">Results desk</span>
           <h2>Latest from the counts</h2>
         </div>
         <span class="desk-clock" data-desk-time>${formatTimeET(maxAsOf(store.feeds, 2026))}</span>
@@ -650,7 +662,7 @@ function overviewPage() {
     <section class="card">
       <div class="card-head">
         <div>
-          <span class="eyebrow">Since 2024</span>
+          <span class="eyebrow">Since 2024 · contested in both years</span>
           <h2>Biggest shifts</h2>
         </div>
         <a class="text-link" href="#/compare">Full comparison ${icon('chevronRight', 14)}</a>
@@ -682,13 +694,86 @@ function overviewPage() {
 }
 
 function mapTabs() {
-  return ['all', ...OFFICE_ORDER].map((office) => `<button class="segment ${store.mapOffice === office ? 'active' : ''}" data-action="set-map-office" data-office="${office}">${office === 'all' ? 'All' : esc(OFFICES[office].label)}</button>`).join('');
+  const offices = ['all', ...OFFICE_ORDER].map((office) => `<button class="segment ${!store.mapCompare && store.mapOffice === office ? 'active' : ''}" data-action="set-map-office" data-office="${office}">${office === 'all' ? 'All' : esc(OFFICES[office].label)}</button>`).join('');
+  return `${offices}<button class="segment ${store.mapCompare ? 'active' : ''}" data-action="toggle-map-compare" aria-pressed="${store.mapCompare}">Compare ’24</button>`;
 }
 
-function usMap(office, interactive = false) {
+function mapTitle() {
+  if (store.mapCompare) return '2024 → 2026 swing';
+  if (store.mapFocus) return `${STATE_NAMES[store.mapFocus] || store.mapFocus} counties`;
+  if (store.mapOffice === 'all') return 'Where the results stand';
+  return `${OFFICES[store.mapOffice].label} by state`;
+}
+
+function mapToolbar(state = null) {
+  const name = state ? STATE_NAMES[state] || state : '';
+  const crumb = state
+    ? `<button class="map-crumb" data-action="map-us">United States</button><span class="map-crumb-sep">/</span><strong>${esc(name)}</strong>`
+    : '<strong>United States</strong>';
+  return `<div class="map-toolbar">
+    <div class="map-breadcrumb">${icon('map', 14)}${crumb}${store.mapCompare ? '<span class="map-mode-pill">Compare ’24</span>' : ''}</div>
+    <div class="map-actions">
+      ${state ? `<button class="map-action" data-action="open-state-drawer" data-state="${state}">State snapshot</button>` : ''}
+      <div class="map-zoom" role="group" aria-label="Map zoom">
+        <button data-action="map-zoom-out" aria-label="Zoom out">−</button>
+        <button data-action="map-zoom-in" aria-label="Zoom in">+</button>
+        <button class="map-reset" data-action="map-reset-zoom" aria-label="Reset map zoom">Reset</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function mapFrame({ svg, state = null, caption, note = '' }) {
+  return `<div class="map-wrap interactive-map" data-map-state="${state || ''}">
+    ${mapToolbar(state)}
+    <div class="map-viewport">${svg}</div>
+    <div class="map-caption">${caption}</div>
+    ${note ? `<p class="map-note">${icon('info', 14)}<span>${note}</span></p>` : ''}
+  </div>`;
+}
+
+function mapCompareData(office) {
+  const offices = office === 'all' ? OFFICE_ORDER : [office];
+  const rows = [];
+  for (const key of offices) {
+    const prior = priorFeed(key);
+    if (!prior) continue;
+    for (const race of officeFeed(key)?.races || []) {
+      const previous = findPriorRace(race, prior);
+      const compared = compareRace(race, previous);
+      if (!compared || compared.redistricted) continue;
+      rows.push({ race, previous, compared });
+    }
+  }
+  const byState = new Map();
+  for (const row of rows) {
+    const state = row.race.state;
+    const weight = Math.max(1, Number(row.previous?.total) || Number(row.race.total) || 1);
+    const entry = byState.get(state) || { state, swingSum: 0, weight: 0, count: 0 };
+    entry.swingSum += row.compared.swing * weight;
+    entry.weight += weight;
+    entry.count += 1;
+    byState.set(state, entry);
+  }
+  for (const entry of byState.values()) entry.swing = entry.weight ? entry.swingSum / entry.weight : null;
+  return { rows, byState };
+}
+
+function swingTone(value) {
+  if (value == null || !Number.isFinite(value)) return 'no-compare';
+  if (value >= 6) return 'swing-d-strong';
+  if (value >= 2) return 'swing-d';
+  if (value > -2) return 'swing-even';
+  if (value > -6) return 'swing-r';
+  return 'swing-r-strong';
+}
+
+function liveStateMap(office, interactive = false) {
   const races = office === 'all' ? currentRaces() : officeFeed(office)?.races || [];
   const mapLabel = office === 'all' ? 'All races' : OFFICES[office].label;
   const statesWithRaces = new Set(races.map((race) => race.state));
+  const mapBox = store.mapView || MAP_BOX;
+  const zoomed = mapBox.w < MAP_BOX.w * 0.78;
   const paths = Object.entries(statePaths).map(([state, geometry]) => {
     const status = getStateStatus(races, state);
     let tone = 'none';
@@ -709,18 +794,114 @@ function usMap(office, interactive = false) {
     const tone = statesWithRaces.has(state) ? (status.leader === 'D' ? 'd' : status.leader === 'R' ? 'r' : 'n') : 'n';
     return `<text class="map-label ${tone}" x="${geometry.cx}" y="${geometry.cy}">${state}</text>`;
   }).join('');
-  return `<div class="map-wrap">
-    <svg class="us-map" viewBox="0 0 976 610" role="img" aria-label="${esc(mapLabel)} results map">
-      <defs>
-        <pattern id="split-pattern" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-          <rect width="3.5" height="7" fill="#2f6fed"></rect>
-          <rect x="3.5" width="3.5" height="7" fill="#e5484d"></rect>
-        </pattern>
-      </defs>
-      <g>${paths}</g>
-      <g class="map-labels" aria-hidden="true">${labels}</g>
-    </svg>
-    <div class="map-caption"><span>${races.length} races tracked</span><span>${statesWithRaces.size} states reporting</span></div>
+  const svg = `<svg class="us-map${zoomed ? ' map-zoomed' : ''}" viewBox="${boxString(mapBox)}" role="img" aria-label="${esc(mapLabel)} results map">
+    <defs>
+      <pattern id="split-pattern" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <rect width="3.5" height="7" fill="#2f6fed"></rect>
+        <rect x="3.5" width="3.5" height="7" fill="#e5484d"></rect>
+      </pattern>
+    </defs>
+    <g>${paths}</g>
+    <g class="map-labels" aria-hidden="true">${labels}</g>
+  </svg>`;
+  return mapFrame({
+    svg,
+    caption: `<span>${races.length} races tracked</span><span>${statesWithRaces.size} states reporting</span>`,
+  });
+}
+
+function countyFocusMap(state, office, interactive = false) {
+  const records = [...COUNTY_INDEX.byFips.values()].filter((record) => record.s === state);
+  const withMeasures = records.filter((record) => record.items.length).length;
+  const base = stateBox(state);
+  const mapBox = store.mapView || base;
+  const zoomed = mapBox.w < base.w * 0.78;
+  const outline = `<path class="county-state-outline" d="${statePaths[state]?.d || ''}"></path>`;
+  const paths = records.map((record) => {
+    const summary = countySummary(record.items);
+    const name = countyDisplayName(record);
+    const stateName = STATE_NAMES[record.s] || record.s;
+    const title = `${name}, ${stateName}: ${summary.total ? `${summary.total} local measure${summary.total === 1 ? '' : 's'}, ${summary.label.toLowerCase()}` : 'no indexed local measures'}`;
+    const click = interactive ? ` data-action="open-county" data-state="${record.s}" data-fips="${record.fips}" role="button" tabindex="0"` : '';
+    return `<path class="county-path ${summary.tone}" d="${record.d}"${click} aria-label="${esc(title)}"><title>${esc(title)}</title></path>`;
+  }).join('');
+  const svg = `<svg class="us-map county-focus-map${zoomed ? ' map-zoomed' : ''}" viewBox="${boxString(mapBox)}" role="img" aria-label="${esc(STATE_NAMES[state] || state)} county map">
+    <g class="county-outlines">${outline}</g>
+    <g class="county-fills">${paths}</g>
+  </svg>`;
+  return mapFrame({
+    svg,
+    state,
+    caption: `<span>${records.length} counties · ${withMeasures} with measures</span><span>Local measures only</span>`,
+    note: 'County shading reflects indexed local ballot measures, not federal county-level results.',
+  });
+}
+
+function compareMap(office, interactive = false) {
+  const { rows, byState } = mapCompareData(office);
+  const mapBox = store.mapView || MAP_BOX;
+  const zoomed = mapBox.w < MAP_BOX.w * 0.78;
+  const paths = Object.entries(statePaths).map(([state, geometry]) => {
+    const entry = byState.get(state);
+    const tone = swingTone(entry?.swing);
+    const name = STATE_NAMES[state] || state;
+    const title = entry
+      ? `${name}: ${entry.count} comparable race${entry.count === 1 ? '' : 's'}, ${formatSignedPct(entry.swing)} average swing (2024 → 2026)`
+      : `${name}: no comparable race with votes in both years yet`;
+    const click = interactive ? ` data-action="open-state" data-state="${state}" role="button" tabindex="0"` : '';
+    return `<path class="state-path ${tone}" d="${geometry.d}"${click} aria-label="${esc(title)}"><title>${esc(title)}</title></path>`;
+  }).join('');
+  const labels = Object.entries(statePaths).map(([state, geometry]) => {
+    const entry = byState.get(state);
+    const tone = entry == null ? 'n' : entry.swing >= 2 ? 'd' : entry.swing <= -2 ? 'r' : 'n';
+    return `<text class="map-label ${tone}" x="${geometry.cx}" y="${geometry.cy}">${state}</text>`;
+  }).join('');
+  const note = !store.priorReady
+    ? 'Loading the 2024 certified baseline…'
+    : 'Average two-party swing, weighted by 2024 votes. Redistricted House seats are excluded. 2026 counts are partial, so read this as directional.';
+  const svg = `<svg class="us-map${zoomed ? ' map-zoomed' : ''}" viewBox="${boxString(mapBox)}" role="img" aria-label="2024 to 2026 swing by state">
+    <g>${paths}</g>
+    <g class="map-labels" aria-hidden="true">${labels}</g>
+  </svg>`;
+  return mapFrame({
+    svg,
+    caption: `<span>${rows.length} comparable races</span><span>${byState.size} states with a 2024 baseline</span>`,
+    note,
+  });
+}
+
+function usMap(office, interactive = false) {
+  if (store.mapCompare) return compareMap(office, interactive);
+  if (store.mapFocus) return countyFocusMap(store.mapFocus, office, interactive);
+  return liveStateMap(office, interactive);
+}
+
+function mapLegend() {
+  if (store.mapCompare) {
+    return `<div class="map-legend compare-legend">
+      <span><i class="legend-swatch swing-d-strong"></i>D +6 or more</span>
+      <span><i class="legend-swatch swing-d"></i>D +2 to 6</span>
+      <span><i class="legend-swatch swing-even"></i>Even ±2</span>
+      <span><i class="legend-swatch swing-r"></i>R +2 to 6</span>
+      <span><i class="legend-swatch swing-r-strong"></i>R +6 or more</span>
+      <span><i class="legend-swatch no-compare"></i>No comparable race</span>
+    </div>`;
+  }
+  if (store.mapFocus) {
+    return `<div class="map-legend county-legend">
+      <span><i class="county-swatch approved"></i>Approved</span>
+      <span><i class="county-swatch rejected"></i>Rejected</span>
+      <span><i class="county-swatch counting"></i>Counting</span>
+      <span><i class="county-swatch waiting"></i>Awaiting count</span>
+      <span><i class="county-swatch none"></i>No indexed measure</span>
+    </div>`;
+  }
+  return `<div class="map-legend">
+    <span><i class="legend-swatch d"></i>D leading</span>
+    <span><i class="legend-swatch r"></i>R leading</span>
+    <span><i class="legend-swatch split"></i>Split</span>
+    <span><i class="legend-swatch other"></i>Other</span>
+    <span><i class="legend-swatch nofeed"></i>No count yet</span>
   </div>`;
 }
 
@@ -787,10 +968,13 @@ function officePage(office) {
 
   <section class="card office-map-card">
     <div class="card-head compact">
-      <div><span class="eyebrow">Map</span><h2>${esc(meta.label)} by state</h2></div>
-      <span class="card-note">${races.length} races tracked${prior ? ` · 2024 baseline loaded` : ''}</span>
+      <div><span class="eyebrow">Map</span><h2>${esc(mapTitle())}</h2></div>
+      <div class="segmented" role="group" aria-label="Map mode and office">
+        ${mapTabs()}
+      </div>
     </div>
-    ${usMap(office, true)}
+    ${usMap(store.mapOffice, true)}
+    ${mapLegend()}
   </section>
 
   <section class="card race-table-card">
@@ -1417,7 +1601,7 @@ function seedEvents(feeds) {
       time: new Date().toISOString(),
       type: 'info',
       icon: 'activity',
-      title: 'Live desk connected',
+      title: 'Results desk connected',
       detail: `${races.length} races across ${new Set(races.map((race) => race.state)).size} states, including ${LOCAL_ITEMS.length} local measures.`,
     },
     ...(asOf ? [{
@@ -1500,6 +1684,10 @@ function navigate(route) {
 }
 
 function handleClick(event) {
+  if (suppressMapClick) {
+    suppressMapClick = false;
+    return;
+  }
   const target = event.target.closest('[data-action]');
   if (!target) return;
   const action = target.dataset.action;
@@ -1528,6 +1716,19 @@ function handleClick(event) {
     return;
   }
   if (action === 'open-state') {
+    const state = target.dataset.state;
+    if (!store.mapCompare) {
+      store.mapFocus = state;
+      store.mapView = null;
+      store.drawer = null;
+      render();
+      return;
+    }
+    store.drawer = { type: 'state', state };
+    render();
+    return;
+  }
+  if (action === 'open-state-drawer') {
     store.drawer = { type: 'state', state: target.dataset.state };
     render();
     return;
@@ -1565,6 +1766,29 @@ function handleClick(event) {
   if (action === 'set-map-office') {
     store.mapOffice = target.dataset.office;
     render();
+    return;
+  }
+  if (action === 'toggle-map-compare') {
+    store.mapCompare = !store.mapCompare;
+    store.mapFocus = null;
+    store.mapView = null;
+    render();
+    return;
+  }
+  if (action === 'map-us') {
+    store.mapFocus = null;
+    store.mapView = null;
+    render();
+    return;
+  }
+  if (action === 'map-zoom-in' || action === 'map-zoom-out') {
+    const svg = svgForMapControl(target);
+    if (svg) zoomMap(svg, action === 'map-zoom-in' ? 0.72 : 1.38);
+    return;
+  }
+  if (action === 'map-reset-zoom') {
+    const svg = svgForMapControl(target);
+    if (svg) resetMapZoom(svg);
     return;
   }
   if (action === 'set-compare-office') {
@@ -1606,6 +1830,137 @@ function handleClick(event) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     render();
   }
+}
+
+function svgForMapTarget(target) {
+  const viewport = target.closest?.('.map-viewport');
+  return viewport?.querySelector('svg.us-map') || null;
+}
+
+function svgForMapControl(target) {
+  return target.closest?.('.interactive-map')?.querySelector('svg.us-map') || null;
+}
+
+function viewBoxFromSvg(svg) {
+  const [x, y, w, h] = (svg.getAttribute('viewBox') || '0 0 976 610').split(/\s+/).map(Number);
+  return { x, y, w, h };
+}
+
+function mapBaseFromSvg(svg) {
+  const state = svg.closest?.('.interactive-map')?.dataset.mapState;
+  return state ? stateBox(state) : { ...MAP_BOX };
+}
+
+function mapScale(svg, box = viewBoxFromSvg(svg)) {
+  const rect = svg.getBoundingClientRect();
+  if (!rect.width || !rect.height) return 1;
+  return Math.min(rect.width / box.w, rect.height / box.h);
+}
+
+function mapAnchor(svg, box, clientX, clientY) {
+  const rect = svg.getBoundingClientRect();
+  const scale = mapScale(svg, box);
+  if (!scale) return { x: box.x + box.w / 2, y: box.y + box.h / 2 };
+  const contentWidth = box.w * scale;
+  const contentHeight = box.h * scale;
+  const left = rect.left + (rect.width - contentWidth) / 2;
+  const top = rect.top + (rect.height - contentHeight) / 2;
+  return {
+    x: box.x + Math.min(box.w, Math.max(0, (clientX - left) / scale)),
+    y: box.y + Math.min(box.h, Math.max(0, (clientY - top) / scale)),
+  };
+}
+
+function clampMapBox(box, base) {
+  const minScale = 1 / 14;
+  const maxScale = 1.02;
+  const scale = Math.min(maxScale, Math.max(minScale, box.w / base.w));
+  const w = base.w * scale;
+  const h = base.h * scale;
+  const x = Math.min(base.x + base.w - w, Math.max(base.x, box.x));
+  const y = Math.min(base.y + base.h - h, Math.max(base.y, box.y));
+  return { x, y, w, h };
+}
+
+function applyMapBox(svg, box, base = mapBaseFromSvg(svg)) {
+  const clamped = clampMapBox(box, base);
+  svg.setAttribute('viewBox', boxString(clamped));
+  svg.classList.toggle('map-zoomed', clamped.w < base.w * 0.78);
+  store.mapView = clamped;
+  return clamped;
+}
+
+function zoomMap(svg, factor, clientX = null, clientY = null) {
+  const base = mapBaseFromSvg(svg);
+  const box = viewBoxFromSvg(svg);
+  const currentScale = box.w / base.w;
+  const nextScale = Math.min(1.02, Math.max(1 / 14, currentScale * factor));
+  const nextW = base.w * nextScale;
+  const nextH = base.h * nextScale;
+  const anchor = clientX == null ? { x: box.x + box.w / 2, y: box.y + box.h / 2 } : mapAnchor(svg, box, clientX, clientY);
+  const ratio = nextW / box.w;
+  applyMapBox(svg, {
+    x: anchor.x - (anchor.x - box.x) * ratio,
+    y: anchor.y - (anchor.y - box.y) * ratio,
+    w: nextW,
+    h: nextH,
+  }, base);
+}
+
+function resetMapZoom(svg) {
+  const base = mapBaseFromSvg(svg);
+  applyMapBox(svg, base, base);
+}
+
+function panMap(svg, dx, dy, box, base) {
+  const scale = mapScale(svg, box);
+  if (!scale) return;
+  applyMapBox(svg, { ...box, x: box.x - dx / scale, y: box.y - dy / scale }, base);
+}
+
+function handleMapWheel(event) {
+  const svg = svgForMapTarget(event.target);
+  if (!svg) return;
+  event.preventDefault();
+  const delta = Math.max(-140, Math.min(140, event.deltaY));
+  zoomMap(svg, Math.exp(delta * 0.0013), event.clientX, event.clientY);
+}
+
+function handleMapPointerDown(event) {
+  if (event.button !== 0) return;
+  const svg = svgForMapTarget(event.target);
+  if (!svg) return;
+  const box = viewBoxFromSvg(svg);
+  mapDrag = {
+    svg,
+    base: mapBaseFromSvg(svg),
+    box,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    moved: false,
+  };
+  svg.setPointerCapture?.(event.pointerId);
+}
+
+function handleMapPointerMove(event) {
+  if (!mapDrag || event.pointerId !== mapDrag.pointerId) return;
+  const dx = event.clientX - mapDrag.startX;
+  const dy = event.clientY - mapDrag.startY;
+  if (!mapDrag.moved && Math.hypot(dx, dy) > 4) mapDrag.moved = true;
+  if (!mapDrag.moved) return;
+  event.preventDefault();
+  panMap(mapDrag.svg, dx, dy, mapDrag.box, mapDrag.base);
+}
+
+function handleMapPointerUp(event) {
+  if (!mapDrag || event.pointerId !== mapDrag.pointerId) return;
+  if (mapDrag.moved) {
+    suppressMapClick = true;
+    window.setTimeout(() => { suppressMapClick = false; }, 40);
+  }
+  mapDrag.svg.releasePointerCapture?.(event.pointerId);
+  mapDrag = null;
 }
 
 async function sharePage(title) {
@@ -1670,11 +2025,19 @@ async function boot() {
   document.addEventListener('input', handleInput);
   document.addEventListener('change', handleChange);
   document.addEventListener('keydown', handleKeydown);
+  document.addEventListener('wheel', handleMapWheel, { passive: false });
+  document.addEventListener('pointerdown', handleMapPointerDown);
+  document.addEventListener('pointermove', handleMapPointerMove);
+  document.addEventListener('pointerup', handleMapPointerUp);
+  document.addEventListener('pointercancel', handleMapPointerUp);
   window.addEventListener('hashchange', () => {
     const next = routeFromHash();
     if (next === store.route) return;
     store.route = next;
     store.drawer = null;
+    store.mapFocus = null;
+    store.mapView = null;
+    if (ROUTE_OFFICE[next]) store.mapOffice = ROUTE_OFFICE[next];
     window.scrollTo({ top: 0, behavior: 'smooth' });
     render();
   });

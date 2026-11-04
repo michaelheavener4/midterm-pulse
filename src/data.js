@@ -161,7 +161,13 @@ export function normalizeRace(office, key, raw, meta = {}) {
   const top = cands[0];
   const second = cands[1];
   const leaderParty = raw.leader ? normalizeParty(raw.leader) : (total > 0 && top ? top.party : '');
-  const margin = top && second && top.pct != null && second.pct != null ? top.pct - second.pct : null;
+  // Margin from raw votes where available. Feed percentages are rounded, so a
+  // percentage-point difference collapses genuinely different races to 0.0.
+  const margin = top && second
+    ? top.votes > 0 && total > 0
+      ? (top.votes - second.votes) / total * 100
+      : top.pct != null && second.pct != null ? top.pct - second.pct : null
+    : null;
   const dVotes = cands.filter((c) => c.party === 'D').reduce((sum, c) => sum + c.votes, 0);
   const rVotes = cands.filter((c) => c.party === 'R').reduce((sum, c) => sum + c.votes, 0);
   const twoPartyTotal = dVotes + rVotes;
@@ -566,9 +572,15 @@ export function findPriorRace(race, priorFeed) {
 
 export function compareRace(race, prior) {
   if (!prior || !prior.hasVotes || !race.hasVotes) return null;
+  // A swing needs a real two-party baseline in both years. An uncontested or
+  // one-party 2024 race produces a +/-100 "margin" with nothing behind it, and
+  // swings computed off that baseline are artifacts, not shifts.
+  if (race.uncontested || prior.uncontested) return null;
+  if (!(race.dVotes > 0 && race.rVotes > 0 && prior.dVotes > 0 && prior.rVotes > 0)) return null;
   const current = race.twoPartyMargin;
   const before = prior.twoPartyMargin;
   if (current == null || before == null) return null;
+  if (Math.abs(before) >= 99.999) return null;
   return {
     current,
     before,
@@ -621,9 +633,11 @@ export function stateGroups(races) {
 
 export function closestRaces(races, { minReporting = 5, minVotes = 1000, limit = 6, requireBothParties = true } = {}) {
   return races
-    .filter((race) => race.hasVotes && race.margin != null && (race.reporting ?? 0) >= minReporting && race.total >= minVotes)
+    .filter((race) => race.hasVotes && race.margin != null && race.margin > 0 && (race.reporting ?? 0) >= minReporting && race.total >= minVotes)
     .filter((race) => !requireBothParties || (race.dVotes > 0 && race.rVotes > 0))
-    .sort((a, b) => a.margin - b.margin)
+    .sort((a, b) => a.margin - b.margin
+      || Math.abs((a.top?.votes || 0) - (a.second?.votes || 0)) - Math.abs((b.top?.votes || 0) - (b.second?.votes || 0))
+      || b.total - a.total)
     .slice(0, limit);
 }
 
@@ -662,7 +676,10 @@ export function formatSignedPct(value, digits = 1) {
 
 export function formatMargin(race) {
   if (race?.margin == null) return '—';
-  return `${race.margin.toFixed(1)} pts`;
+  // Sub-point margins get two decimals so genuinely different close races do
+  // not all read as the same 0.0.
+  const digits = race.margin < 1 ? 2 : 1;
+  return `${race.margin.toFixed(digits)} pts`;
 }
 
 export function marginParty(race) {
